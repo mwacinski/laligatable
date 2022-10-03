@@ -16,25 +16,25 @@ with DAG(
     schedule_interval='@weekly'
 ) as dag:
 
-    export_df = PythonOperator(
+    export_table = PythonOperator(
         dag=dag,
-        task_id='export_df',
+        task_id='export_table',
         op_kwargs={
             'today': str(date.today()),
             'path':'/opt/airflow/data/'
         },
-        python_callable=script1.export_df
+        python_callable=script1.export_table
     )
 
-    transform = PythonOperator(
+    export_new_table = PythonOperator(
         dag=dag,
-        task_id='transform',
+        task_id='export_new_table',
         op_kwargs={
             'today': str(date.today()),
             'path': '/opt/airflow/data/'
         },
-        python_callable=script1.transform_data
+        python_callable=script1.export_new_table
     )
 
 
-export_df >> transform
+export_table >> export_new_table
