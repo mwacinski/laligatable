@@ -3,3 +3,4 @@ bs4==0.0.1
 pandasql==0.7.3
 pandas==1.1.5
 lxml==4.9.1
+google.cloud==0.34.0
