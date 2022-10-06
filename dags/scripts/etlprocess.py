@@ -5,6 +5,7 @@ import pandas as pd
 from pandasql import sqldf
 from google.cloud import storage
 
+
 def get_laliga_tags():
     url = 'https://understat.com/league/la_liga'
     response = requests.get(url)
@@ -29,7 +30,7 @@ def create_table():
     data_json = get_laliga_data()
     i = 0
     for _ in data_json:
-        if data_json[i]['isResult'] == False:
+        if data_json[i]['isResult'] is False:
             break
         data.append([
             data_json[i]['a']['title'],
@@ -266,7 +267,6 @@ def export_new_table(today, path):
 
 
 def upload_to_gcs(bucket, object_name, local_file):
-
     # WORKAROUND to prevent timeout for files > 6 MB on 800 kbps upload speed.
     # (Ref: https://github.com/googleapis/python-storage/issues/74)
     storage.blob._MAX_MULTIPART_SIZE = 5 * 1024 * 1024  # 5 MB
