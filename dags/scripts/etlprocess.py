@@ -50,6 +50,11 @@ def create_table():
                                      'DateTime', 'Chances for draw', 'Chances for away team', 'Chances for home team',
                                      'Away team goals', 'Home team goals'])
 
+    df = df.astype({"Title of Away Team": str, "Short Title of Away Team": str,
+                    "Title of Home Team": str, "Short Title of Home Team": str,
+                    "Chances for draw": float, "Chances for away team": float,
+                    "Chances for home team": float, "Away team goals": int, "Home team goals": int})
+    df['DateTime'] = pd.to_datetime(df['DateTime'])
     return df
 
 
@@ -260,9 +265,7 @@ def export_new_table(today, path):
         df_weekly_new_table.to_csv(filename_weekly_new_table, index=False)
 
 
-
 def upload_to_gcs(bucket, object_name, local_file):
-
 
     # WORKAROUND to prevent timeout for files > 6 MB on 800 kbps upload speed.
     # (Ref: https://github.com/googleapis/python-storage/issues/74)

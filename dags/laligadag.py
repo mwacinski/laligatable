@@ -1,5 +1,5 @@
 from datetime import datetime, date, timedelta
-from scripts import script1
+from scripts import etlprocess
 from airflow import DAG
 import os
 from airflow.operators.python import PythonOperator
@@ -28,7 +28,7 @@ with DAG(
             'today': today,
             'path': path_to_data
         },
-        python_callable=script1.export_table
+        python_callable=etlprocess.export_table
     )
 
     export_new_table = PythonOperator(
@@ -38,17 +38,27 @@ with DAG(
             'today': today,
             'path': path_to_data
         },
-        python_callable=script1.export_new_table
+        python_callable=etlprocess.export_new_table
     )
 
-    local_to_gcs = PythonOperator(
-        task_id="local_to_gcs",
-        python_callable=script1.upload_to_gcs,
+    local_to_gcs_table = PythonOperator(
+        task_id="local_to_gcs_table",
+        python_callable=etlprocess.upload_to_gcs,
         op_kwargs={
             "bucket": BUCKET,
-            "object_name": f"raw/{today}T.csv",
+            "object_name": f"data/{today}.csv",
+            "local_file": f"{path_to_data}{today}.csv",
+        },
+    )
+
+    local_to_gcs_transformed_table = PythonOperator(
+        task_id="local_to_gcs_transformed_table",
+        python_callable=etlprocess.upload_to_gcs,
+        op_kwargs={
+            "bucket": BUCKET,
+            "object_name": f"data/{today}T.csv",
             "local_file": f"{path_to_data}{today}T.csv",
         },
     )
 
-export_table >> export_new_table >> local_to_gcs
+export_table >> export_new_table >> [local_to_gcs_table, local_to_gcs_transformed_table]
