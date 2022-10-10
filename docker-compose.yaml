@@ -57,9 +57,10 @@ x-airflow-common:
     GOOGLE_APPLICATION_CREDENTIALS: /.google/credentials/google_credentials.json
     AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT: 'google-cloud-platform://?extra__google_cloud_platform__key_path=/.google/credentials/google_credentials.json'
 
-    GCP_PROJECT_ID: 'laliga-364416'
-    GCP_GCS_BUCKET: 'laligatable'
-    BIGQUERY_DATASET: 'laliga'
+    GCP_PROJECT_ID: 
+    GCP_GCS_BUCKET: 
+    BIGQUERY_DATASET:
+    LOCATION:
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs

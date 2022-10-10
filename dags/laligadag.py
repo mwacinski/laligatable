@@ -8,6 +8,7 @@ from airflow.providers.google.cloud.operators.bigquery import BigQueryCreateEmpt
 PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 BUCKET = os.environ.get("GCP_GCS_BUCKET")
 BIGQUERY_DATASET = os.environ.get("BIGQUERY_DATASET")
+LOCATION = os.environ.get("LOCATION")
 INPUT_PART = "data"
 INPUT_FILETYPE = "csv"
 path_to_data = '/opt/airflow/data/'
@@ -69,7 +70,7 @@ with DAG(
     create_dataset = BigQueryCreateEmptyDatasetOperator(
         task_id="create_dataset",
         dataset_id=BIGQUERY_DATASET,
-        location="europe-central2"
+        location=LOCATION
     )
 
     bigquery_table_matches_task = GCSToBigQueryOperator(
@@ -92,7 +93,7 @@ with DAG(
         ],
         source_format=f"{INPUT_FILETYPE.upper()}",
         write_disposition='WRITE_TRUNCATE',
-        location='europe-central2',
+        location=LOCATION,
         skip_leading_rows=1
     )
     bigquery_points_table_task = GCSToBigQueryOperator(
@@ -114,7 +115,7 @@ with DAG(
         ],
         source_format=f"{INPUT_FILETYPE.upper()}",
         write_disposition='WRITE_TRUNCATE',
-        location='europe-central2',
+        location=LOCATION,
         skip_leading_rows=1
 
     )
