@@ -8,7 +8,7 @@ from google.cloud import storage
 
 def get_laliga_tags():
     url = 'https://understat.com/league/la_liga'
-    response = requests.get(url)
+    response = requests.get(url, allow_redirects=True)
     soup = BeautifulSoup(response.content, 'lxml')
     soup_scripts = soup.find_all("script")
     return soup_scripts
@@ -25,62 +25,57 @@ def get_laliga_data():
     return data
 
 
-def create_table():
-    data = []
+def create_table_matches():
     data_json = get_laliga_data()
-    i = 0
-    for _ in data_json:
-        if data_json[i]['isResult'] is False:
-            break
-        data.append([
-            data_json[i]['a']['title'],
-            data_json[i]['a']['short_title'],
-            data_json[i]['h']['title'],
-            data_json[i]['h']['short_title'],
-            data_json[i]['datetime'],
-            data_json[i]['forecast']['d'],
-            data_json[i]['forecast']['l'],
-            data_json[i]['forecast']['w'],
-            data_json[i]['goals']['a'],
-            data_json[i]['goals']['h']
-        ]
-        )
-        i += 1
-    df = pd.DataFrame(data, columns=['Title of Away Team', 'Short Title of Away Team', 'Title of Home Team',
-                                     'Short Title of Home Team',
-                                     'DateTime', 'Chances for draw', 'Chances for away team', 'Chances for home team',
-                                     'Away team goals', 'Home team goals'])
+    df_src = pd.json_normalize(data_json)
+    df_src = df_src.loc[df_src['isResult'] != False]
+    df_src = df_src[['a.title', 'a.short_title', 'h.title',
+                     'h.short_title', 'datetime', 'forecast.w',
+                     'forecast.d', 'forecast.l', 'goals.h', 'goals.a']]
 
-    df = df.astype({"Title of Away Team": str, "Short Title of Away Team": str,
-                    "Title of Home Team": str, "Short Title of Home Team": str,
-                    "Chances for draw": float, "Chances for away team": float,
-                    "Chances for home team": float, "Away team goals": int, "Home team goals": int})
-    df['DateTime'] = pd.to_datetime(df['DateTime'])
-    return df
+    df_src = df_src.rename(columns={"a.title": "Title of Away Team", 'a.short_title': 'Short Title of Away Team',
+                                    'h.title': 'Title of Home Team', 'h.short_title': 'Short Title of Home Team',
+                                    'datetime': 'DateTime', 'forecast.w': 'Chances for away team',
+                                    'forecast.d': 'Chances for draw', 'forecast.l': 'Chances for home team',
+                                    'goals.a': 'Away team goals', 'goals.h': 'Home team goals'}, errors="raise")
+    #
+    df_src = df_src.astype({"Title of Away Team": str, "Short Title of Away Team": str,
+                            "Title of Home Team": str, "Short Title of Home Team": str,
+                            "Away team goals": int, "Home team goals": int})
+
+    df_src['Chances for draw'] = df_src['Chances for draw'].apply(pd.to_numeric)
+    df_src['Chances for away team'] = df_src['Chances for away team'].apply(pd.to_numeric)
+    df_src['Chances for home team'] = df_src['Chances for home team'].apply(pd.to_numeric)
+    df_src['DateTime'] = df_src['DateTime'].apply(pd.to_datetime)
+
+    return df_src
 
 
-def export_table(today, path):
-    df_weekly = create_table()
+def export_table_matches(today, path):
+    df_weekly = create_table_matches()
     filename_weekly = path + today + '.csv'
     df_weekly.to_csv(filename_weekly, index=False)
 
 
 def get_extracted_data(today, path):
-    data = pd.read_csv(path + today + '.csv', sep=',')
+    try:
+        data = pd.read_csv(path + today + '.csv', sep=',')
+    except:
+        data = pd.DataFrame()
     return data
 
 
-def transform_data():
-    df_helper = pd.DataFrame(create_table())
+def transform_data_to_points_table():
+    df_helper = pd.DataFrame(create_table_matches())
     if not df_helper.empty:
         new_table = sqldf(
-            'WITH goals_scored_away AS '
+            'WITH goals_scored_away AS '  # GOALS SCORED AWAY
             '( '
             '  SELECT "Title of Away Team" as teams, SUM("Away team goals") as goals '
             '  FROM df_helper '
             '  GROUP BY 1 '
             '), '
-            'goals_scored_home AS '
+            'goals_scored_home AS '  # GOALS SCORED HOME
             '( '
             '  SELECT "Title of Home Team" as teams, SUM("Home team goals") as goals '
             '  FROM df_helper '
@@ -93,13 +88,13 @@ def transform_data():
             'JOIN goals_scored_home gsh '
             'ON gsa.teams = gsh.teams '
             '), '
-            'games_played_home AS '
+            'games_played_home AS '  # GAMES PLAYED HOME
             '( '
             '  SELECT "Title of Home Team" as teams, COUNT("Title of Home Team") as games_played '
             '  FROM df_helper '
             '  GROUP BY 1 '
             '), '
-            'games_played_away AS '
+            'games_played_away AS '  # GAMES PLAYED AWAY
             '( '
             '  SELECT "Title of Away Team" as teams, COUNT("Title of Away Team") as games_played '
             '  FROM df_helper '
@@ -112,13 +107,13 @@ def transform_data():
             'JOIN games_played_home gph '
             'ON gpa.teams = gph.teams '
             '), '
-            'goals_lost_away AS '
+            'goals_lost_away AS '  # GOALS LOST AWAY
             '( '
             '  SELECT "Title of Away Team" as teams, SUM("Home team goals") as goals '
             '  FROM df_helper '
             '  GROUP BY 1 '
             '), '
-            'goals_lost_home AS '
+            'goals_lost_home AS '  # GOALS LOST HOME
             '( '
             '  SELECT "Title of Home Team" as teams, SUM("Away team goals") as goals '
             '  FROM df_helper '
@@ -138,7 +133,7 @@ def transform_data():
             'JOIN goals_scored gs '
             'ON gls.teams = gs.teams '
             '), '
-            'games_won_home AS '
+            'games_won_home AS '  # GAMES WON HOME
             '( '
             'SELECT "Title of Home Team" as teams, SUM( '
             'CASE '
@@ -149,7 +144,7 @@ def transform_data():
             'FROM df_helper '
             'GROUP BY 1 '
             '), '
-            'games_won_away AS '
+            'games_won_away AS '  # GAMES WON AWAY
             '( '
             'SELECT "Title of Away Team" as teams, SUM( '
             'CASE '
@@ -167,7 +162,7 @@ def transform_data():
             'JOIN games_won_away gwa '
             'ON gwh.teams = gwa.teams '
             '), '
-            'games_lost_away AS '
+            'games_lost_away AS '  # GAMES LOST AWAY
             '( '
             'SELECT "Title of Away Team" as teams, SUM( '
             'CASE '
@@ -178,7 +173,7 @@ def transform_data():
             'FROM df_helper '
             'GROUP BY 1 '
             '), '
-            'games_lost_home AS '
+            'games_lost_home AS '  # GAMES LOST HOME
             '( '
             'SELECT "Title of Home Team" as teams, SUM( '
             'CASE '
@@ -196,7 +191,7 @@ def transform_data():
             'JOIN games_lost_away gla '
             'ON glh.teams = gla.teams '
             '), '
-            'games_draw_away AS '
+            'games_draw_away AS '  # GAMES DRAW AWAY
             '( '
             'SELECT "Title of Away Team" as teams, SUM( '
             'CASE '
@@ -207,7 +202,7 @@ def transform_data():
             'FROM df_helper '
             'GROUP BY 1 '
             '), '
-            'games_draw_home AS '
+            'games_draw_home AS '  # GAMES DRAW HOME
             '( '
             'SELECT "Title of Home Team" as teams, SUM( '
             'CASE '
@@ -251,16 +246,17 @@ def transform_data():
             'ON gp.teams = gb.teams '
             'JOIN points pts '
             'ON gp.teams = pts.teams '
+            'ORDER BY points DESC, points DESC'
         )
 
-    new_table = new_table.astype({"goals": int, "goals_lost": int, "games_played": int, "games_won": int,
-                                  "games_draw": int, "goal_balance": int, "points": int})
+    new_table.astype({"goals": int, "goals_lost": int, "games_played": int, "games_won": int,
+                      "games_draw": int, "goal_balance": int, "points": int})
 
     return new_table
 
 
-def export_new_table(today, path):
-    df_weekly_new_table = transform_data()
+def export_points_table(today, path):
+    df_weekly_new_table = transform_data_to_points_table()
     filename_weekly_new_table = path + today + 'T.csv'
     if len(df_weekly_new_table.columns) == 9:
         df_weekly_new_table.to_csv(filename_weekly_new_table, index=False)

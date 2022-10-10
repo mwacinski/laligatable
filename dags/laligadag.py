@@ -3,15 +3,16 @@ from scripts import etlprocess
 from airflow import DAG
 import os
 from airflow.operators.python import PythonOperator
-from airflow.providers.google.cloud.operators.bigquery import BigQueryCreateExternalTableOperator, BigQueryCreateEmptyDatasetOperator
+from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQueryOperator
+from airflow.providers.google.cloud.operators.bigquery import BigQueryCreateEmptyDatasetOperator
 PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 BUCKET = os.environ.get("GCP_GCS_BUCKET")
 BIGQUERY_DATASET = os.environ.get("BIGQUERY_DATASET")
 INPUT_PART = "data"
 INPUT_FILETYPE = "csv"
-
 path_to_data = '/opt/airflow/data/'
 today = str(date.today())
+
 default_args = {
     'owner': 'airflow',
     'retry': 5,
@@ -25,28 +26,28 @@ with DAG(
     schedule_interval='@weekly'
 ) as dag:
 
-    export_table = PythonOperator(
+    export_table_matches = PythonOperator(
         dag=dag,
-        task_id='export_table',
+        task_id='export_table_matches',
         op_kwargs={
             'today': today,
             'path': path_to_data
         },
-        python_callable=etlprocess.export_table
+        python_callable=etlprocess.export_table_matches
     )
 
-    export_new_table = PythonOperator(
+    export_points_table = PythonOperator(
         dag=dag,
-        task_id='export_new_table',
+        task_id='export_points_table',
         op_kwargs={
             'today': today,
             'path': path_to_data
         },
-        python_callable=etlprocess.export_new_table
+        python_callable=etlprocess.export_points_table
     )
 
-    local_to_gcs_table = PythonOperator(
-        task_id="local_to_gcs_table",
+    local_to_gcs_table_matches = PythonOperator(
+        task_id="local_to_gcs_table_matches",
         python_callable=etlprocess.upload_to_gcs,
         op_kwargs={
             "bucket": BUCKET,
@@ -55,8 +56,8 @@ with DAG(
         },
     )
 
-    local_to_gcs_transformed_table = PythonOperator(
-        task_id="local_to_gcs_transformed_table",
+    local_to_gcs_points_table = PythonOperator(
+        task_id="local_to_gcs_points_table",
         python_callable=etlprocess.upload_to_gcs,
         op_kwargs={
             "bucket": BUCKET,
@@ -71,11 +72,11 @@ with DAG(
         location="europe-central2"
     )
 
-    bigquery_table_task = BigQueryCreateExternalTableOperator(
-        task_id=f"bq_{BIGQUERY_DATASET}_task",
+    bigquery_table_matches_task = GCSToBigQueryOperator(
+        task_id=f"bq_{BIGQUERY_DATASET}_table_matches",
         bucket=BUCKET,
         source_objects=[f"data/{today}.csv"],
-        destination_project_dataset_table=f"{PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_DATASET}matches",
+        destination_project_dataset_table=f"{PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_DATASET}_table_matches",
         schema_fields=[
             {"name": "Title_of_Away_Team", "type": "STRING", "mode": "NULLABLE"},
             {"name": "Short_Title_of_Away_Team", "type": "STRING", "mode": "NULLABLE"},
@@ -90,13 +91,15 @@ with DAG(
 
         ],
         source_format=f"{INPUT_FILETYPE.upper()}",
-
+        write_disposition='WRITE_TRUNCATE',
+        location='europe-central2',
+        skip_leading_rows=1
     )
-    bigquery_table_transformed_task = BigQueryCreateExternalTableOperator(
-        task_id=f"bq_{BIGQUERY_DATASET}_transformed_task",
+    bigquery_points_table_task = GCSToBigQueryOperator(
+        task_id=f"bq_{BIGQUERY_DATASET}_points_table",
         bucket=BUCKET,
         source_objects=[f"data/{today}T.csv"],
-        destination_project_dataset_table=f"{PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_DATASET}table",
+        destination_project_dataset_table=f"{PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_DATASET}_points_table",
         schema_fields=[
             {"name": "teams", "type": "STRING", "mode": "NULLABLE"},
             {"name": "goals", "type": "INTEGER", "mode": "NULLABLE"},
@@ -110,7 +113,10 @@ with DAG(
 
         ],
         source_format=f"{INPUT_FILETYPE.upper()}",
+        write_disposition='WRITE_TRUNCATE',
+        location='europe-central2',
+        skip_leading_rows=1
 
     )
 
-export_table >> export_new_table >> local_to_gcs_table >> create_dataset >> bigquery_table_task >> local_to_gcs_transformed_table >> bigquery_table_transformed_task
+export_table_matches >> export_points_table >> local_to_gcs_table_matches >> local_to_gcs_points_table >> create_dataset >> bigquery_table_matches_task  >> bigquery_points_table_task
